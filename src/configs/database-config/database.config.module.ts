@@ -1,18 +1,31 @@
 import { Module } from '@nestjs/common';
-import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { User } from 'src/apis/auth/entities/user.entity';
 
 @Module({
   imports: [
-    MongooseModule.forRootAsync({
+    TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        uri: configService.get<string>('DB_URI'),
-        user: configService.get<string>('DB_USER'),
-        pass: configService.get<string>('DB_PASSWORD'),
-        dbName: configService.get<string>('DB_NAME'),
-      }),
+      useFactory: (configService: ConfigService) => {
+        console.log('Database Host:', configService.get<string>('DB_HOST'));
+        console.log('Database Port:', configService.get<number>('DB_PORT'));
+        console.log('Database User:', configService.get<string>('DB_USERNAME'));
+        console.log('Database Name:', configService.get<string>('DB_NAME'));
+
+        return {
+          type: 'mysql',
+          host: configService.get<string>('DB_HOST'),
+          port: configService.get<number>('DB_PORT'),
+          username: configService.get<string>('DB_USERNAME'),
+          password: configService.get<string>('DB_PASSWORD'),
+          database: configService.get<string>('DB_NAME'),
+          entities: [User],
+          synchronize: true,
+          timezone: 'Z',
+        };
+      },
     }),
   ],
 })

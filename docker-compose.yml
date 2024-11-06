@@ -1,17 +1,36 @@
 version: '3.8'
 
 services:
-  mongo:
-    image: mongo
+  app:
+    build: .
+    container_name: nestjs-app
+    env_file: ".env"
+    ports:
+      - '8080:8080'
+    depends_on:
+      mysql:
+        condition: service_started
+        required: true
+    networks:
+      - nestjs_network
+  mysql:
+    image: mysql:8.0
     restart: always
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: example
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
     ports:
-      - '27017:27017'
+      - '3306:3306'
     volumes:
-      - mongo-data:/data/db
+      - mysql-data:/var/lib/mysql
+    networks:
+      - nestjs_network
 
 volumes:
-  mongo-data:
+  mysql-data:
     driver: local
+networks:
+  nestjs_network:
+    driver: bridge

@@ -6,6 +6,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(new ValidationPipe());
+  app.enableCors({
+    origin: true,
+    methods: ['GET', 'POST', 'PUT'],
+    credentials: true,
+  });
   const config = new DocumentBuilder()
     .setTitle('brightDev example')
     .setDescription('The demo api ')
