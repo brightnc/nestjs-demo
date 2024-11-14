@@ -15,6 +15,5 @@ export class signInUserDto {
 
 export class ResAccessToken {
   readonly accessToken: string;
-  readonly 'Max-Age': string;
-  readonly tokenType: string;
+  readonly refreshToken: string;
 }

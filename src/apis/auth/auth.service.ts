@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ResAccessToken, signInUserDto } from './dto/signin-user.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -7,7 +12,6 @@ import { IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { STATUS_CODES } from 'http';
 
 @Injectable()
 export class AuthService {
@@ -17,19 +21,21 @@ export class AuthService {
     private jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
+
   async create(createUserDto: CreateUserDto): Promise<User> {
     const { username, email, password, dateOfBirth } = createUserDto;
 
-    const existingAccount = await this.usersRepository.findOne({
-      where: [{ username }, { email }],
-    });
+    const existingAccount = await this.findUserByUsernameOrEmail(
+      username,
+      email,
+    );
     if (existingAccount) {
       if (existingAccount.username === username) {
-        throw new Error('Username already exists');
+        throw new ConflictException('Username already exists');
       }
 
       if (existingAccount.email === email) {
-        throw new Error('Email already exists');
+        throw new ConflictException('Email already exists');
       }
     }
 
@@ -44,45 +50,72 @@ export class AuthService {
 
     await this.usersRepository.save(account);
     delete account.password;
-    console.log('now ===== ', Date.now());
-
     return account;
   }
 
   async signIn(signInUserDto: signInUserDto): Promise<ResAccessToken> {
     const { username, password } = signInUserDto;
-    const existingAccount = await this.usersRepository.findOne({
-      where: { username, deleted_at: IsNull() },
-    });
+    const existingAccount = await this.findByUsernameAndNotDeleted(username);
     if (!existingAccount) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new BadRequestException('Invalid email or password');
     }
 
     const isMatch = await bcrypt.compare(password, existingAccount.password);
     if (!isMatch) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new BadRequestException('Invalid email or password');
     }
     delete existingAccount.password;
     const payload = {
-      sub: existingAccount.id,
-      user: existingAccount,
-      token_type: 'Bearer',
+      userId: String(existingAccount.id),
     };
-    console.log(
-      'JWT_EXPIRATION_TIME ===== ',
-      this.configService.get<string>('JWT_EXPIRATION_TIME'),
-    );
-    const expiresIn = isNaN(this.configService.get('JWT_EXPIRATION_TIME'))
-      ? this.configService.get('JWT_EXPIRATION_TIME')
-      : Number(this.configService.get('JWT_EXPIRATION_TIME'));
+    return this.generateTokens(payload);
+  }
+
+  async refreshToken(refreshToken: string): Promise<ResAccessToken> {
+    try {
+      const payload = this.jwtService.verify(refreshToken);
+
+      return this.generateTokens(payload);
+    } catch (error) {
+      throw new ForbiddenException('Invalid refresh token');
+    }
+  }
+
+  // Utility method for checking if user exists
+  private async findUserByUsernameOrEmail(
+    username: string,
+    email: string,
+  ): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: [{ username }, { email }],
+    });
+  }
+
+  private async findByUsernameAndNotDeleted(
+    username: string,
+  ): Promise<User | null> {
+    return this.usersRepository.findOne({
+      where: { username, deleted_at: IsNull() },
+    });
+  }
+
+  // Utility method for generating tokens
+  private async generateTokens(payload: { userId: string }) {
+    const accessTokenExpiresIn = Number(
+      this.configService.get('JWT_EXPIRATION_TIME', 3600),
+    ); // Default 1 hour
+    const refreshTokenExpiresIn = Number(
+      this.configService.get('JWT_REFRESH_EXPIRATION_TIME', 86400),
+    ); // Default 1 day
+
     const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn,
+      expiresIn: accessTokenExpiresIn,
     });
 
-    return {
-      accessToken,
-      'Max-Age': expiresIn,
-      tokenType: payload.token_type,
-    };
+    const refreshToken = await this.jwtService.signAsync(payload, {
+      expiresIn: refreshTokenExpiresIn,
+    });
+
+    return { accessToken, refreshToken };
   }
 }
